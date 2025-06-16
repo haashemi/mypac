@@ -42,7 +42,11 @@ func main() {
 		printPackageGroup(group, installed, "")
 		fmt.Println()
 	}
-	printPackageGroup(installed, installed, "")
+
+	boldGreenP.Println(installed.Name)
+	for _, pkg := range installed.Packages {
+		blueP.Printf("%s- %s\n", prefixSpace, pkg)
+	}
 }
 
 // printPackageGroup prints the group name and its packages and nested groups
