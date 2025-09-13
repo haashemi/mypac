@@ -13,12 +13,12 @@ It reads the `pacman -Qqe` output and compares with the YAML file I have written
 ## Usage:
 
 0. Download the binary or build it yourself.
-1. Create a `package.yml` file
+1. Create a `packages.yml` file
 2. Run the application using `./mypac`
 
-*Note:* You can optionally pass a `-path` flag to use different `pacakge.yml` file anywhere with different names.
+*Note:* You can optionally pass a `-path` flag to use different `packages.yml` file anywhere with different names.
 
-## Package.yml structure:
+## packages.yml structure:
 
 This file has a really simple structure; It's just an array of package groups which can be nested togehter too.
 
