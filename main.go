@@ -3,9 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"slices"
+	"os"
+	"strings"
 
 	"github.com/fatih/color"
+	"github.com/haashemi/mypac/internal/config"
 )
 
 const (
@@ -14,64 +16,63 @@ const (
 )
 
 var (
-	filePath = flag.String("path", "packages.yml", "Path to the package groups file")
+	boldGreenP  = color.New(color.FgGreen, color.Bold)
+	boldRedP    = color.New(color.FgHiRed, color.Bold)
+	boldYellowP = color.New(color.FgYellow, color.Bold)
+	blueP       = color.New(color.FgBlue)
 )
 
-var (
-	boldGreenP = color.New(color.FgGreen, color.Bold)
-	boldRedP   = color.New(color.FgHiRed, color.Bold)
-	blueP      = color.New(color.FgBlue)
-)
+var commands = map[string]func(args []string) error{
+	"packages":  runPackages,
+	"lostfiles": runLostFiles,
+	"modified":  runModified,
+}
 
 func main() {
-	flag.Parse()
+	// No subcommand (or only flags) means `packages`, as it used to be.
+	name, args := "packages", os.Args[1:]
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		name, args = args[0], args[1:]
+	}
 
-	installed, err := loadInstalledPackages("Not Categorized")
-	if err != nil {
-		boldRedP.Println("Failed to load installed packages:", err)
+	run, ok := commands[name]
+	if !ok {
+		usage()
+		if name != "help" {
+			os.Exit(2)
+		}
 		return
 	}
 
-	packageGroups, err := loadPackageGroups(*filePath)
-	if err != nil {
-		boldRedP.Println("Failed to load your package groups:", err)
-		return
+	if os.Geteuid() != 0 {
+		boldRedP.Fprintln(os.Stderr, "mypac must be run as root, try: sudo mypac", strings.Join(os.Args[1:], " "))
+		os.Exit(1)
 	}
 
-	for _, group := range packageGroups {
-		printPackageGroup(group, installed, "")
-		fmt.Println()
-	}
-
-	boldGreenP.Println(installed.Name)
-	for _, pkg := range installed.Packages {
-		blueP.Printf("%s- %s\n", prefixSpace, pkg)
+	if err := run(args); err != nil {
+		boldRedP.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }
 
-// printPackageGroup prints the group name and its packages and nested groups
-// inside by recursively calling itself. It updates the installed [PackageGroup]
-// so we could find the packages that are not categorized and have a smaller
-// array to lookup for each package.
-func printPackageGroup(group *PackageGroup, installed *PackageGroup, prefix string) {
-	if group == nil || installed == nil {
-		return
-	}
+func usage() {
+	fmt.Fprintf(os.Stderr, `Usage: sudo mypac [command] [flags]
 
-	boldGreenP.Println(prefix + group.Name)
-	for _, pkg := range group.Packages {
-		pkgIndex := slices.Index(installed.Packages, pkg)
-		isInstalled := pkgIndex != -1
+Commands:
+  packages    Categorize explicitly installed packages (default)
+  lostfiles   List files not owned by any package, grouped by reason
+  modified    List package files modified since installation (mostly /etc)
+  help        Show this help
 
-		if isInstalled {
-			blueP.Printf("%s%s- %s\n", prefix, prefixSpace, pkg)
-			installed.Packages = slices.Delete(installed.Packages, pkgIndex, pkgIndex+1)
-		} else {
-			boldRedP.Printf("%s%s- %s: (Not installed)\n", prefix, prefixSpace, pkg)
-		}
-	}
+Run 'mypac <command> -h' for the command's flags.
 
-	for _, subGroup := range group.Groups {
-		printPackageGroup(subGroup, installed, prefix+prefixSpace)
-	}
+Config search order (unless -config is given):
+  %s
+`, strings.Join(config.SearchPaths(), "\n  "))
+}
+
+// newFlags returns a flag set for a command, with the shared -config flag.
+func newFlags(name string) (*flag.FlagSet, *string) {
+	fs := flag.NewFlagSet(name, flag.ExitOnError)
+	return fs, fs.String("config", "", "path to the config file (default: first one found)")
 }

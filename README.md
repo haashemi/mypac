@@ -10,41 +10,88 @@ I usually install too many packages when doing experiments, and after some time,
 
 It reads the `pacman -Qqe` output and compares with the YAML file I have written for myself. It not only helps me to have my packages kinda organized, but also lets me know if there's a package missing for whatever reason. And as the YAML file is completely handwritten, I can write comments all over the file for extra context of each package or group when needed.
 
-## Usage:
+The same goes for files: it lists the files no package owns (using [lostfiles](https://github.com/graysky2/lostfiles)) next to the reason you wrote for each, and the package files you've modified (mostly in `/etc`), so you know what to back up.
 
-0. Download the binary or build it yourself.
-1. Create a `packages.yml` file
-2. Run the application using `./mypac`
+## Install
 
-*Note:* You can optionally pass a `-path` flag to use different `packages.yml` file anywhere with different names.
+### With makepkg (recommended)
 
-## packages.yml structure:
+The repo ships a `PKGBUILD` for `mypac-git`, which builds the latest commit on `main`:
 
-This file has a really simple structure; It's just an array of package groups which can be nested togehter too.
-
-Here is its type:
-```go
-type PackageGroup struct {
-	Name     string          `yaml:"name"`
-	Packages []string        `yaml:"packages"`
-	Groups   []*PackageGroup `yaml:"groups"`
-}
+```sh
+git clone https://github.com/haashemi/mypac.git
+cd mypac
+makepkg -si
 ```
 
-And here's an example:
+`makepkg` clones the sources from GitHub itself; your checkout only provides the `PKGBUILD`. To update, run `git pull && makepkg -si` again. The version comes from `git describe`, so pacman treats each new commit as an upgrade. Remove it with `sudo pacman -R mypac-git`.
+
+### With Go
+
+```sh
+go install github.com/haashemi/mypac@latest
+```
+
+This way you also need the `lostfiles` package (`sudo pacman -S lostfiles`); the PKGBUILD pulls it in for you.
+
+## Usage
+
+mypac must be run as root (`lostfiles` and reading every `/etc` file need it):
+
+```
+sudo mypac [command] [flags]
+
+  packages    Categorize explicitly installed packages (default)
+  lostfiles   List files not owned by any package, grouped by reason
+  modified    List package files modified since installation (mostly /etc)
+  help        Show this help
+```
+
+Every command accepts `-config <path>`. `lostfiles` and `modified` accept `-paths` to print only the paths, handy for backups:
+
+```sh
+{ sudo mypac modified -paths; sudo mypac lostfiles -paths; } | sudo tar -czf backup.tar.gz -T -
+```
+
+`lostfiles -strict` runs lostfiles in its strict mode.
+
+## Config
+
+Unless `-config` is given, the first file found is used:
+
+1. `/etc/mypac.{yml,yaml}`
+2. `/etc/mypac/mypac.{yml,yaml}`
+
 ```yaml
-- name: Arch Linux
-  packages:
-    - base
-    - linux
-  groups:
-    - name: Sound
-      packages:
-        - pipewire
+# Package groups, which can be nested.
+packages:
+  - name: Arch Linux
+    packages:
+      - base
+      - linux
+    groups:
+      - name: Sound
+        packages:
+          - pipewire
 
-- name: Development
-  packages:
-    - docker
-    - git
-    - go
+  - name: Development
+    packages:
+      - docker
+      - git
+      - go
+
+# Why a file not owned by any package exists. A directory covers everything
+# under it, and the most specific path wins.
+lostfiles:
+  /etc/asusd: asusctl's runtime config
+  /opt/some-app: installed manually from upstream tarball
+
+# Modified package files to leave out of `mypac modified`.
+modified:
+  ignore_packages:
+    - filesystem
+  ignore_files:
+    - /etc/locale.gen
 ```
+
+The old format, where the whole file is just the list of package groups, still works.

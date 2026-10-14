@@ -1,56 +1,60 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
-	"os"
-	"os/exec"
+	"fmt"
+	"slices"
 
-	"gopkg.in/yaml.v2"
+	"github.com/haashemi/mypac/internal/arch"
+	"github.com/haashemi/mypac/internal/config"
 )
 
-type PackageGroup struct {
-	Name     string          `yaml:"name"`
-	Packages []string        `yaml:"packages"`
-	Groups   []*PackageGroup `yaml:"groups"`
+func runPackages(args []string) error {
+	fs, configPath := newFlags("packages")
+	fs.Parse(args)
+
+	installed, err := arch.ExplicitPackages()
+	if err != nil {
+		return fmt.Errorf("failed to load installed packages: %w", err)
+	}
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return fmt.Errorf("failed to load your config: %w", err)
+	}
+
+	for _, group := range cfg.Packages {
+		installed = printPackageGroup(group, installed, "")
+		fmt.Println()
+	}
+
+	boldGreenP.Println("Not Categorized")
+	for _, pkg := range installed {
+		blueP.Printf("%s- %s\n", prefixSpace, pkg)
+	}
+	return nil
 }
 
-// loadPackageGroups returns a slice of [PackageGroup] read from the specified
-// YAML file.
-func loadPackageGroups(path string) ([]*PackageGroup, error) {
-	packagesFile, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
+// printPackageGroup prints the group name and its packages and nested groups
+// inside by recursively calling itself. It returns the installed packages
+// left uncategorized, so each lookup searches a smaller slice and the rest
+// can be printed as not categorized.
+func printPackageGroup(group *config.PackageGroup, installed []string, prefix string) []string {
+	if group == nil {
+		return installed
 	}
 
-	var data []*PackageGroup
-	err = yaml.Unmarshal(packagesFile, &data)
-	if err != nil {
-		return nil, err
-	}
-
-	return data, nil
-}
-
-// loadInstalledPackages returns a [PackageGroup] of explicitly installed
-// packages by executing the `pacman -Qqe` command.
-func loadInstalledPackages(groupName string) (*PackageGroup, error) {
-	cmd := exec.Command("pacman", "-Qqe")
-
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, err
-	}
-
-	group := &PackageGroup{Name: groupName}
-	scanner := bufio.NewScanner(bytes.NewReader(output))
-
-	for scanner.Scan() {
-		pkgName := scanner.Text()
-		if pkgName != "" {
-			group.Packages = append(group.Packages, pkgName)
+	boldGreenP.Println(prefix + group.Name)
+	for _, pkg := range group.Packages {
+		if i := slices.Index(installed, pkg); i != -1 {
+			blueP.Printf("%s%s- %s\n", prefix, prefixSpace, pkg)
+			installed = slices.Delete(installed, i, i+1)
+		} else {
+			boldRedP.Printf("%s%s- %s: (Not installed)\n", prefix, prefixSpace, pkg)
 		}
 	}
 
-	return group, nil
+	for _, subGroup := range group.Groups {
+		installed = printPackageGroup(subGroup, installed, prefix+prefixSpace)
+	}
+	return installed
 }
