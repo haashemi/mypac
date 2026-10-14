@@ -1,7 +1,7 @@
 # Maintainer: Ali Hashemi <pvwvwx@gmail.com>
 pkgname=mypac-git
 _pkgname=mypac
-pkgver=1.0.0.r1.g87661ef
+pkgver=1.0.0.r2.g64babbb
 pkgrel=1
 pkgdesc='Organize your explicitly installed pacman packages, lost files and modified files with a YAML file'
 arch=('x86_64' 'aarch64')
